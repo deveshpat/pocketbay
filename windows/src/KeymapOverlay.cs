@@ -17,10 +17,12 @@ public sealed class KeymapOverlay : Grid
     readonly StackPanel _toolbarButtons;
     readonly Popup _popup = new() { StaysOpen = false, AllowsTransparency = true, Placement = PlacementMode.Relative };
     OverlayMode _mode = OverlayMode.Hidden;
+    ContentControl _vehicleKeyHost = null!;
 
     public Func<Rect> ScreenRect = () => Rect.Empty;
     public Keymap Keymap { get => _canvas.Keymap; set { _canvas.Keymap = value; _canvas.InvalidateVisual(); } }
     public bool IsAiming { set { _canvas.IsAiming = value; _canvas.InvalidateVisual(); } }
+    public ControlMode ControlMode { set { _canvas.Mode = value; _canvas.InvalidateVisual(); } }
     public void Refresh() => _canvas.InvalidateVisual();
     public event Action<Keymap>? Changed;
     public event Action? Done;
@@ -40,6 +42,8 @@ public sealed class KeymapOverlay : Grid
             _canvas.SelectedId = null;
             _popup.IsOpen = false;
             _canvas.InvalidateVisual();
+            if (value == OverlayMode.Edit)
+                _vehicleKeyHost.Content = new KeyCaptureButton(Keymap.VehicleToggleKey, k => { Keymap.VehicleToggleKey = k; Changed?.Invoke(Keymap); }) { MinWidth = 90 };
             if (value == OverlayMode.Edit)
                 Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input, () => _canvas.Focus());
         }
@@ -74,8 +78,13 @@ public sealed class KeymapOverlay : Grid
         done.Background = Glyph.Accent;
         done.Click += (_, _) => Done?.Invoke();
         foreach (var b in new[] { Add("Button", ControlType.Tap), Add("Joystick", ControlType.Joystick), Add("Aim", ControlType.Aim),
-                     Add("Fire", ControlType.Fire), Add("Free look", ControlType.Look), reset, done })
+                     Add("Fire", ControlType.Fire), Add("Free look", ControlType.Look) })
             _toolbarButtons.Children.Add(b);
+        _toolbarButtons.Children.Add(new TextBlock { Text = "Vehicle toggle:", Foreground = Brushes.Gray, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 4, 0) });
+        _vehicleKeyHost = new ContentControl();
+        _toolbarButtons.Children.Add(_vehicleKeyHost);
+        _toolbarButtons.Children.Add(reset);
+        _toolbarButtons.Children.Add(done);
 
         var hint = new TextBlock
         {
@@ -150,6 +159,7 @@ sealed class OverlayCanvas : FrameworkElement
     readonly KeymapOverlay _owner;
     public Keymap Keymap = Keymap.Bgmi();
     public bool Editing, IsAiming;
+    public ControlMode Mode = ControlMode.Foot;
     public string? SelectedId;
     Vector? _dragOffset;
     bool _dragMoved;
@@ -176,6 +186,7 @@ sealed class OverlayCanvas : FrameworkElement
         foreach (var c in Keymap.Controls)
         {
             if (!Editing && IsAiming && c.Type is ControlType.Aim or ControlType.Look) continue;
+            if (!Editing && c.Mode is { } m && m != Mode) continue;
             var p = CenterOf(c);
             var selected = c.Id == SelectedId;
             switch (c.Type)
@@ -225,6 +236,15 @@ sealed class OverlayCanvas : FrameworkElement
             {
                 if (selected && c.Type != ControlType.Joystick)
                     dc.DrawEllipse(null, new Pen(Glyph.Accent, 2), p, 24, 24);
+                if (c.Mode is { } cm)
+                {
+                    var off = c.Type == ControlType.Joystick ? JoystickRadius(c) * 0.7 : 16;
+                    var badge = new Rect(p.X + off - 9, p.Y - off - 7, 18, 14);
+                    dc.DrawRoundedRectangle(cm == ControlMode.Vehicle ? Glyph.Accent : new SolidColorBrush(Color.FromRgb(0x3C, 0x9A, 0x5F)), null, badge, 4, 4);
+                    var t = new FormattedText(cm == ControlMode.Vehicle ? "car" : "foot", System.Globalization.CultureInfo.CurrentUICulture,
+                        FlowDirection.LeftToRight, new Typeface("Segoe UI"), 8, Brushes.White, 1.0);
+                    dc.DrawText(t, new Point(badge.X + (badge.Width - t.Width) / 2, badge.Y + (badge.Height - t.Height) / 2));
+                }
                 var below = c.Type == ControlType.Joystick ? JoystickRadius(c) + 14 : c.Type is ControlType.Aim or ControlType.Look ? 32 : 16;
                 Glyph.Caption(dc, c.Label ?? c.Type.Title(), p, below);
             }
@@ -340,6 +360,20 @@ sealed class ControlInspector : Border
                 break;
         }
 
+        if (control.Type != ControlType.Aim)
+        {
+            var works = new ComboBox { Width = 170, ItemsSource = new[] { "Always", "On foot", "In vehicle" },
+                SelectedIndex = control.Mode == null ? 0 : control.Mode == ControlMode.Foot ? 1 : 2 };
+            works.SelectionChanged += (_, _) => { control.Mode = works.SelectedIndex switch { 1 => ControlMode.Foot, 2 => ControlMode.Vehicle, _ => null }; Commit(); };
+            Row("Works", works);
+        }
+        if (control.Type == ControlType.Tap)
+        {
+            var then = new ComboBox { Width = 170, ItemsSource = new[] { "Nothing else", "Switch to vehicle controls", "Switch to on-foot controls", "Toggle vehicle / on-foot" },
+                SelectedIndex = control.SwitchesTo switch { ModeSwitch.Vehicle => 1, ModeSwitch.Foot => 2, ModeSwitch.Toggle => 3, _ => 0 } };
+            then.SelectionChanged += (_, _) => { control.SwitchesTo = then.SelectedIndex switch { 1 => ModeSwitch.Vehicle, 2 => ModeSwitch.Foot, 3 => ModeSwitch.Toggle, _ => null }; Commit(); };
+            Row("Then", then);
+        }
         if (control.Type == ControlType.Tap)
         {
             CheckBox Check(string text, string tip, bool? value, Action<bool> set)

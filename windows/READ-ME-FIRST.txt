@@ -15,6 +15,12 @@ FIRST START
    It downloads the Android emulator and Android 15 with the Play Store (~2 GB)
    straight from Google. If the download stops, just open Pocketbay again: it resumes.
 3. Android starts. Open the Play Store, sign in, and install your games.
+   Got a game pack (.pbpack)? Double-click it (or drag it onto the window) to install
+   the game with its downloaded data, no re-download needed.
+
+UPDATES
+- Pocketbay updates itself: new versions download in the background and install the
+  next time you open it.
 
 GAME CONTROLS (BGMI layout is built in)
 - WASD move, Shift sprint, ` (key left of 1) mouse aim on/off, left click fire,
@@ -23,6 +29,8 @@ GAME CONTROLS (BGMI layout is built in)
 - Hold Tab (bag) or M (map): it opens with the cursor; let go and it closes.
 - Esc = Android Back, or leave mouse aim.
 - Ctrl+E edits the controls: drag buttons, click one to change its key.
+- V switches between on-foot and vehicle controls (buttons can be set to work only
+  on foot or only in a vehicle, and a button like Drive can switch automatically).
 - Ctrl+K turns game controls on/off. F11 = full screen.
 - Layouts: sidebar "…" button > Layout (new, rename, import/export .json files —
   layouts from the Mac version of Pocketbay work here too).
@@ -33,8 +41,8 @@ IF ANDROID WON'T START
   enable Intel VT-x / AMD SVM ("Virtualization") in the BIOS/UEFI settings.
 - Black screen or crash in a game: sidebar "…" > Graphics > "Compatibility (ANGLE /
   Vulkan)". Android restarts with the other graphics mode.
-- Logs: sidebar "…" > Open logs folder. Send pocketbay.log and emulator.log if you
-  need help.
+- Something wrong? Sidebar "…" > Report a problem. It saves a logs zip on your Desktop
+  and opens a bug report page; attach the zip there (or just send the zip).
 
 NOTES
 - Games run through ARM translation on Intel/AMD PCs; some heavy games may be slow

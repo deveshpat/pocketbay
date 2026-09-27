@@ -21,6 +21,11 @@ public sealed class KeymapEngine
     public bool IsActive { get => _active; set { var was = _active; _active = value; if (was && !value) ReleaseAll(); } }
     public bool IsAiming { get; private set; }
     public event Action<bool>? AimingChanged;
+    /// On-foot vs vehicle controls.
+    public ControlMode Mode { get; private set; } = ControlMode.Foot;
+    public event Action<ControlMode>? ModeChanged;
+    /// Which controls each held input activated, so release lifts exactly those.
+    readonly Dictionary<InputKey, List<string>> _activated = [];
 
     readonly HashSet<InputKey> _held = [];
     bool _joystickTouching;
@@ -39,6 +44,7 @@ public sealed class KeymapEngine
     Control? AimControl => _keymap.Controls.FirstOrDefault(c => c.Type == ControlType.Aim);
     Control? LookControl => _keymap.Controls.FirstOrDefault(c => c.Type == ControlType.Look);
     int TouchId(Control c) => _keymap.Controls.IndexOf(c) + 1;
+    bool WorksNow(Control c) => c.Mode == null || c.Mode == Mode;
     Point PointOf(Control c) => new(c.X * DeviceSize.Width, c.Y * DeviceSize.Height);
 
     /// Mouse buttons are only mapped while aiming, so the pointer works normally otherwise.
@@ -71,10 +77,23 @@ public sealed class KeymapEngine
     public bool Press(InputKey input)
     {
         if (!Applies(input)) return false;
-        var controls = _keymap.Controls.Where(c => c.Inputs().Contains(input)).ToList();
-        if (controls.Count == 0) return false;
+        if (input == _keymap.VehicleToggleKey && !_keymap.Controls.Any(c => c.Inputs().Contains(input)))
+        {
+            if (_held.Add(input)) SetMode(Mode == ControlMode.Foot ? ControlMode.Vehicle : ControlMode.Foot);
+            return true;
+        }
+        var all = _keymap.Controls.Where(c => c.Inputs().Contains(input)).ToList();
+        if (all.Count == 0) return false;
         if (!_held.Add(input)) return true;   // key repeat
+        var controls = all.Where(WorksNow).ToList();
+        _activated[input] = controls.Select(c => c.Id).ToList();
+        Activate(controls);
+        return true;
+    }
 
+    /// Puts fingers down for the given controls (a key press, or a mode change while held).
+    void Activate(List<Control> controls)
+    {
         foreach (var c in controls)
         {
             switch (c.Type)
@@ -109,13 +128,28 @@ public sealed class KeymapEngine
                     break;
             }
         }
-        return true;
     }
 
     public bool Release(InputKey input)
     {
         if (!_held.Remove(input)) return false;
-        foreach (var c in _keymap.Controls.Where(c => c.Inputs().Contains(input)).ToList())
+        var ids = _activated.Remove(input, out var list) ? list : [];
+        var controls = _keymap.Controls.Where(c => ids.Contains(c.Id) || (c.Type == ControlType.Joystick && c.Inputs().Contains(input))).ToList();
+        Deactivate(controls);
+        if (controls.FirstOrDefault(c => c.SwitchesTo != null)?.SwitchesTo is { } action)
+            After(0.2, () => SetMode(action switch   // after the tap lands
+            {
+                ModeSwitch.Foot => ControlMode.Foot,
+                ModeSwitch.Vehicle => ControlMode.Vehicle,
+                _ => Mode == ControlMode.Foot ? ControlMode.Vehicle : ControlMode.Foot,
+            }));
+        return true;
+    }
+
+    /// Lifts the fingers of the given controls.
+    void Deactivate(List<Control> controls)
+    {
+        foreach (var c in controls)
         {
             switch (c.Type)
             {
@@ -147,7 +181,24 @@ public sealed class KeymapEngine
                     break;
             }
         }
-        return true;
+    }
+
+    /// Switches on-foot ↔ vehicle controls; keys still held are re-applied.
+    public void SetMode(ControlMode mode)
+    {
+        if (mode == Mode) return;
+        Mode = mode;
+        foreach (var input in _held.ToList())
+        {
+            var ids = _activated.TryGetValue(input, out var l) ? l : [];
+            var stale = _keymap.Controls.Where(c => ids.Contains(c.Id) && !WorksNow(c)).ToList();
+            if (stale.Count > 0) Deactivate(stale);
+            var fresh = _keymap.Controls.Where(c => c.Inputs().Contains(input) && WorksNow(c) && !ids.Contains(c.Id) && c.Type != ControlType.Aim).ToList();
+            _activated[input] = ids.Where(id => !stale.Any(s => s.Id == id)).Concat(fresh.Select(c => c.Id)).ToList();
+            if (fresh.Count > 0) Activate(fresh);
+        }
+        foreach (var c in _keymap.Controls.Where(c => c.Type == ControlType.Joystick)) UpdateJoystick(c);
+        ModeChanged?.Invoke(mode);
     }
 
     /// Scroll mapping fires a quick tap.
@@ -204,6 +255,7 @@ public sealed class KeymapEngine
         bool up = _held.Contains(dirs[0]), left = _held.Contains(dirs[1]);
         bool down = _held.Contains(dirs[2]), right = _held.Contains(dirs[3]);
         double vx = (right ? 1 : 0) - (left ? 1 : 0), vy = (down ? 1 : 0) - (up ? 1 : 0);
+        if (!WorksNow(c)) vx = vy = 0;
         var centre = PointOf(c);
         var id = TouchId(c);
 
@@ -277,6 +329,7 @@ public sealed class KeymapEngine
     {
         foreach (var input in _held.ToList()) Release(input);
         _held.Clear();
+        _activated.Clear();
         SetAiming(false);
         LiftAim();
         EndLook();

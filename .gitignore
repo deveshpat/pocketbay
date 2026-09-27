@@ -9,3 +9,4 @@ windows/*.zip
 # Personal BGMI screenshots (account names)
 bgmi-layouts/
 .DS_Store
+windows/Pocketbay.exe

@@ -6,8 +6,17 @@ namespace Pocketbay;
 public static class Program
 {
     [STAThread]
-    public static void Main()
+    public static void Main(string[] args)
     {
+        var file = args.FirstOrDefault(File.Exists);
+        // One Pocketbay at a time: a second launch (e.g. double-clicking a game pack)
+        // hands its file to the running window and exits.
+        using var single = new Mutex(true, @"Local\Pocketbay.SingleInstance", out var first);
+        if (!first)
+        {
+            if (file != null) File.WriteAllText(Path.Combine(Paths.Inbox, Guid.NewGuid() + ".txt"), file);
+            return;
+        }
         // The emulator's gRPC endpoint is plain HTTP/2 on localhost.
         AppContext.SetSwitch("System.Net.Http.SocketsHttpHandler.Http2UnencryptedSupport", true);
         if (Updater.ApplyPendingUpdate()) return;
@@ -18,7 +27,8 @@ public static class Program
             MessageBox.Show(e.Exception.Message, "Pocketbay", MessageBoxButton.OK, MessageBoxImage.Error);
             e.Handled = true;
         };
-        app.Run(new MainWindow());
+        FileTypes.Register();
+        app.Run(new MainWindow(file));
     }
 }
 
@@ -33,6 +43,7 @@ public static class Paths
     public static string Roaming => Dir(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Pocketbay");
     public static string Layouts => Dir(Roaming, "Layouts");
     public static string Settings => Path.Combine(Roaming, "settings.json");
+    public static string Inbox => Dir(Local, "inbox");
 
     public static string Adb => Path.Combine(Sdk, "platform-tools", "adb.exe");
     public static string Emulator => Path.Combine(Sdk, "emulator", "emulator.exe");
@@ -55,5 +66,26 @@ public static class Log
             lock (Gate) File.AppendAllText(Path.Combine(Paths.Logs, "pocketbay.log"), $"{DateTime.Now:HH:mm:ss.fff} {line}{Environment.NewLine}");
         }
         catch { }
+    }
+}
+
+/// Per-user file association so double-clicking a .pbpack opens it in Pocketbay.
+public static class FileTypes
+{
+    public static void Register()
+    {
+        try
+        {
+            var exe = Environment.ProcessPath;
+            if (exe == null) return;
+            using var ext = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(@"Software\Classes\.pbpack");
+            ext.SetValue("", "Pocketbay.GamePack");
+            using var type = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(@"Software\Classes\Pocketbay.GamePack");
+            type.SetValue("", "Pocketbay game pack");
+            using (var icon = type.CreateSubKey("DefaultIcon")) icon.SetValue("", $"\"{exe}\",0");
+            using var cmd = type.CreateSubKey(@"shell\open\command");
+            cmd.SetValue("", $"\"{exe}\" \"%1\"");
+        }
+        catch (Exception e) { Log.Write("file association: " + e.Message); }
     }
 }

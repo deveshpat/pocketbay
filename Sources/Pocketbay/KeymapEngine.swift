@@ -19,6 +19,12 @@ final class KeymapEngine {
     }
     private(set) var isAiming = false
     var onAimingChanged: ((Bool) -> Void)?
+    /// On-foot vs vehicle controls.
+    private(set) var mode: ControlMode = .foot
+    var onModeChanged: ((ControlMode) -> Void)?
+    /// Which controls each held input activated, so release lifts exactly those even if
+    /// the mode changed in between.
+    private var activated: [InputKey: [UUID]] = [:]
 
     private var held = Set<InputKey>()
     private var joystickTouching = false
@@ -46,6 +52,8 @@ final class KeymapEngine {
         Int32((keymap.controls.firstIndex(of: c) ?? 0) + 1)
     }
 
+    private func worksNow(_ c: Control) -> Bool { c.mode == nil || c.mode == mode }
+
     private func point(_ c: Control) -> CGPoint {
         CGPoint(x: c.x * deviceSize.width, y: c.y * deviceSize.height)
     }
@@ -64,12 +72,23 @@ final class KeymapEngine {
             log.debug("press \(input.longName, privacy: .public) ignored (active=\(self.isActive), aiming=\(self.isAiming))")
             return false
         }
-        let controls = keymap.controls.filter { $0.inputs.contains(input) }
-        guard !controls.isEmpty else { return false }
+        if input == keymap.vehicleToggleKey, !keymap.controls.contains(where: { $0.inputs.contains(input) }) {
+            if !held.contains(input) { held.insert(input); setMode(mode == .foot ? .vehicle : .foot) }
+            return true
+        }
+        let all = keymap.controls.filter { $0.inputs.contains(input) }
+        guard !all.isEmpty else { return false }
+        let controls = all.filter(worksNow)
         log.info("press \(input.longName, privacy: .public) -> \(controls.map { $0.label ?? $0.type.title }.joined(separator: ","), privacy: .public) (aiming=\(self.isAiming), paused=\(self.aimPausedBy != nil))")
         if held.contains(input) { return true }   // key repeat
         held.insert(input)
+        activated[input] = controls.map(\.id)
+        activate(controls, for: input)
+        return true
+    }
 
+    /// Puts fingers down for the given controls (a key press, or a mode change while held).
+    private func activate(_ controls: [Control], for input: InputKey) {
         for c in controls {
             switch c.type {
             case .tap where c.holdToOpen == true:
@@ -98,13 +117,31 @@ final class KeymapEngine {
                 if isAiming { beginLook() } else { touch(c, at: point(c), down: true) }
             }
         }
-        return true
     }
 
     @discardableResult
     func release(_ input: InputKey) -> Bool {
         guard held.remove(input) != nil else { return false }
-        for c in keymap.controls where c.inputs.contains(input) {
+        let ids = activated.removeValue(forKey: input) ?? []
+        let controls = keymap.controls.filter { ids.contains($0.id) || ($0.type == .joystick && $0.inputs.contains(input)) }
+        deactivate(controls, for: input)
+        if let action = controls.first(where: { $0.switchesTo != nil })?.switchesTo {
+            // After the tap lands, so the game sees the button press first.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+                guard let self else { return }
+                switch action {
+                case .foot: self.setMode(.foot)
+                case .vehicle: self.setMode(.vehicle)
+                case .toggle: self.setMode(self.mode == .foot ? .vehicle : .foot)
+                }
+            }
+        }
+        return true
+    }
+
+    /// Lifts the fingers of the given controls.
+    private func deactivate(_ controls: [Control], for input: InputKey) {
+        for c in controls {
             switch c.type {
             case .tap where c.holdToOpen == true:
                 guard let hold = holdStarted.removeValue(forKey: c.id) else { continue }
@@ -129,7 +166,23 @@ final class KeymapEngine {
                 if lookHeld { endLook() } else { touch(c, at: point(c), down: false) }
             }
         }
-        return true
+    }
+
+    /// Switches between on-foot and vehicle controls. Keys still held are re-applied:
+    /// controls that stopped working are lifted, ones that now work are pressed.
+    func setMode(_ newMode: ControlMode) {
+        guard newMode != mode else { return }
+        mode = newMode
+        for input in held {
+            let ids = activated[input] ?? []
+            let stale = keymap.controls.filter { ids.contains($0.id) && !worksNow($0) }
+            if !stale.isEmpty { deactivate(stale, for: input) }
+            let fresh = keymap.controls.filter { $0.inputs.contains(input) && worksNow($0) && !ids.contains($0.id) && $0.type != .aim }
+            activated[input] = ids.filter { id in !stale.contains { $0.id == id } } + fresh.map(\.id)
+            if !fresh.isEmpty { activate(fresh, for: input) }
+        }
+        for c in keymap.controls where c.type == .joystick { updateJoystick(c) }
+        onModeChanged?(newMode)
     }
 
     /// Scroll mapping fires a quick tap.
@@ -196,7 +249,8 @@ final class KeymapEngine {
         guard let dirs = c.keys, dirs.count == 4 else { return }
         let up = held.contains(dirs[0]), left = held.contains(dirs[1])
         let down = held.contains(dirs[2]), right = held.contains(dirs[3])
-        var v = CGVector(dx: (right ? 1 : 0) - (left ? 1 : 0), dy: (down ? 1 : 0) - (up ? 1 : 0))
+        let working = worksNow(c)
+        var v = working ? CGVector(dx: (right ? 1 : 0) - (left ? 1 : 0), dy: (down ? 1 : 0) - (up ? 1 : 0)) : .zero
         let centre = point(c)
         let id = touchID(c)
 
@@ -299,6 +353,7 @@ final class KeymapEngine {
     func releaseAll() {
         for input in held { release(input) }
         held.removeAll()
+        activated.removeAll()
         setAiming(false)
         liftAim()
         endLook()

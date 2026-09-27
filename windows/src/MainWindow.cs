@@ -43,8 +43,12 @@ public sealed class MainWindow : Window
     Version? _pendingUpdate;
     bool _restartAfterClose;
 
-    public MainWindow()
+    string? _pendingPack;
+
+    public MainWindow(string? openFile = null)
     {
+        if (openFile != null && GamePack.LooksLikePack(openFile)) _pendingPack = openFile;
+        WatchInbox();
         Title = "Pocketbay";
         Background = Chrome;
         Icon = AppIcon;
@@ -101,6 +105,11 @@ public sealed class MainWindow : Window
         {
             var packs = files.Where(GamePack.LooksLikePack).ToArray();
             if (packs.Length > 0) InstallPack(packs[0]); else Install(files);
+        };
+        _engine.ModeChanged += mode =>
+        {
+            _overlay.ControlMode = mode;
+            Toast(mode == ControlMode.Vehicle ? "Vehicle controls" : "On-foot controls");
         };
         _engine.AimingChanged += on =>
         {
@@ -253,7 +262,7 @@ public sealed class MainWindow : Window
         {
             Log.Write("install failed: " + e);
             ShowStatus("Setup didn't finish:\n" + e.Message + "\n\nDownloads resume where they stopped.", false, null,
-                ("Try again", () => _ = InstallSdkAsync()), ("Quit", Close));
+                ("Try again", () => _ = InstallSdkAsync()), ("Report a problem", ReportProblem), ("Quit", Close));
             return;
         }
         await CheckAccelerationAndStartAsync();
@@ -271,7 +280,7 @@ public sealed class MainWindow : Window
                 "1. Press Start, type \"Turn Windows features on or off\", and tick \"Windows Hypervisor Platform\". Restart when asked.\n" +
                 "2. If it still fails, turn on virtualization (Intel VT-x or AMD SVM) in your PC's BIOS/UEFI settings.\n\n" +
                 "Details: " + detail.Split('\n').LastOrDefault(l => l.Trim().Length > 0)?.Trim(),
-                false, null, ("Check again", () => _ = CheckAccelerationAndStartAsync()), ("Quit", Close));
+                false, null, ("Check again", () => _ = CheckAccelerationAndStartAsync()), ("Report a problem", ReportProblem), ("Quit", Close));
             return;
         }
         await RunSessionAsync();
@@ -294,7 +303,7 @@ public sealed class MainWindow : Window
                 ShowStatus(e.Message, false, null,
                     ("Try again", () => _ = RunSessionAsync()),
                     ("Try compatibility graphics", () => { Settings.Current.Graphics = "angle"; Settings.Save(); _ = RunSessionAsync(); }),
-                    ("Open logs", () => Process.Start(new ProcessStartInfo(Paths.Logs) { UseShellExecute = true })));
+                    ("Report a problem", ReportProblem));
                 return;
             }
 
@@ -327,6 +336,7 @@ public sealed class MainWindow : Window
                 var audio = _audio;
                 Loop(ct, t => client.StreamAudioAsync(audio.Enqueue, t), "audio");
                 _ = SyncClipboardToPcAsync(client, ct);
+                if (_pendingPack is { } packFile) { _pendingPack = null; InstallPack(packFile); }
                 _ = PollForegroundAppAsync(ct);
             }
 
@@ -617,6 +627,9 @@ public sealed class MainWindow : Window
             };
             menu.Items.Add(check);
         }
+        var report = new MenuItem { Header = "Report a problem…" };
+        report.Click += (_, _) => ReportProblem();
+        menu.Items.Add(report);
         var logs = new MenuItem { Header = "Open logs folder" };
         logs.Click += (_, _) => Process.Start(new ProcessStartInfo(Paths.Logs) { UseShellExecute = true });
         menu.Items.Add(logs);
@@ -659,6 +672,38 @@ public sealed class MainWindow : Window
         if (dlg.ShowDialog(this) == true) Install(dlg.FileNames);
     }
 
+    /// Files handed over by a second launch (double-clicked game pack).
+    void WatchInbox()
+    {
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        timer.Tick += (_, _) =>
+        {
+            foreach (var f in Directory.GetFiles(Paths.Inbox, "*.txt"))
+            {
+                string path;
+                try { path = File.ReadAllText(f).Trim(); File.Delete(f); } catch { continue; }
+                if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+                Activate();
+                if (!GamePack.LooksLikePack(path)) continue;
+                if (_client == null) _pendingPack = path; else InstallPack(path);
+            }
+        };
+        timer.Start();
+    }
+
+    async void ReportProblem()
+    {
+        Toast("Collecting logs…", 30);
+        try
+        {
+            var summary = await Report.SystemSummaryAsync();
+            var zip = await Report.CreateAsync();
+            Report.ShowAndOpenIssue(zip, summary);
+            Toast("Logs saved to your Desktop — attach the zip to the report page that opened", 8);
+        }
+        catch (Exception e) { Toast("Couldn't collect logs: " + e.Message, 6); }
+    }
+
     async void InstallPack(string path)
     {
         if (_client == null) { Toast("Wait for Android to finish starting"); return; }
@@ -672,7 +717,8 @@ public sealed class MainWindow : Window
         catch (Exception e)
         {
             Log.Write("pack install: " + e);
-            ShowStatus("The game pack didn't install:\n" + e.Message, false, null, ("OK", () => _status.Visibility = Visibility.Collapsed));
+            ShowStatus("The game pack didn't install:\n" + e.Message, false, null,
+                ("OK", () => _status.Visibility = Visibility.Collapsed), ("Report a problem", ReportProblem));
         }
     }
 

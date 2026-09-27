@@ -16,5 +16,6 @@ rm -f publish/*.pdb Pocketbay-Windows.zip
 cd "$ROOT"
 git add -A && git commit -qm "Release Windows $VERSION" || true
 git push -q
-gh release create "v$VERSION" windows/Pocketbay-Windows.zip --title "Pocketbay $VERSION" --notes "$NOTES"
+cp windows/publish/Pocketbay.exe windows/Pocketbay.exe
+gh release create "v$VERSION" windows/Pocketbay.exe windows/Pocketbay-Windows.zip --title "Pocketbay $VERSION" --notes "$NOTES"
 echo "Released v$VERSION — installed copies update on their next launch."

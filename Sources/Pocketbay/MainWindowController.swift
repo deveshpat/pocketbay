@@ -63,6 +63,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuDe
         screen.onDeviceSizeChanged = { [weak self] size in self?.deviceSizeChanged(size) }
         screen.onFilesDropped = { [weak self] urls in self?.install(urls) }
         screen.onPaste = { [weak self] in self?.pasteFromMac() }
+        engine.onModeChanged = { [weak self] mode in
+            guard let self else { return }
+            self.screen.overlay.controlMode = mode
+            self.toast.show(mode == .vehicle ? "Vehicle controls" : "On-foot controls")
+        }
         engine.onAimingChanged = { [weak self] on in
             guard let self else { return }
             if on { self.setSidebarRevealed(false) }

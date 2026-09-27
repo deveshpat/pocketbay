@@ -4,6 +4,9 @@ using System.Text.Json.Serialization;
 
 namespace Pocketbay;
 
+public enum ControlMode { Foot, Vehicle }
+public enum ModeSwitch { Foot, Vehicle, Toggle }
+
 /// Serialised in camelCase ("tap", "joystick", …) to match the Mac app.
 public enum ControlType
 {
@@ -43,6 +46,10 @@ public sealed class Control
     [JsonPropertyName("showsCursor")] public bool? ShowsCursor { get; set; }
     /// Press opens, release closes.
     [JsonPropertyName("holdToOpen")] public bool? HoldToOpen { get; set; }
+    /// When the control works: null = always, or only on foot / in a vehicle.
+    [JsonPropertyName("mode")] public ControlMode? Mode { get; set; }
+    /// Pressing it switches the controls mode (e.g. "Exit vehicle" → on foot).
+    [JsonPropertyName("switchesTo")] public ModeSwitch? SwitchesTo { get; set; }
 
     public IEnumerable<InputKey> Inputs()
     {
@@ -77,8 +84,10 @@ public sealed class Keymap
     /// Android packages this layout applies to; empty = every app.
     [JsonPropertyName("packages")] public List<string> Packages { get; set; } = [];
     [JsonPropertyName("controls")] public List<Control> Controls { get; set; } = [];
+    /// Toggles between on-foot and vehicle controls (default V).
+    [JsonPropertyName("vehicleToggleKey")] public InputKey? VehicleToggleKey { get; set; } = InputKey.KeyCode(9);
 
-    public Keymap Clone() => new() { Id = Id, Name = Name, Packages = [.. Packages], Controls = Controls.Select(c => c.Clone()).ToList() };
+    public Keymap Clone() => new() { Id = Id, Name = Name, Packages = [.. Packages], Controls = Controls.Select(c => c.Clone()).ToList(), VehicleToggleKey = VehicleToggleKey };
 
     static InputKey K(int mac) => InputKey.KeyCode(mac);
 
