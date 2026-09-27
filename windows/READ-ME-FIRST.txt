@@ -29,8 +29,6 @@ GAME CONTROLS (BGMI layout is built in)
 - Hold Tab (bag) or M (map): it opens with the cursor; let go and it closes.
 - Esc = Android Back, or leave mouse aim.
 - Ctrl+E edits the controls: drag buttons, click one to change its key.
-- V switches between on-foot and vehicle controls (buttons can be set to work only
-  on foot or only in a vehicle, and a button like Drive can switch automatically).
 - Ctrl+K turns game controls on/off. F11 = full screen.
 - Layouts: sidebar "…" button > Layout (new, rename, import/export .json files —
   layouts from the Mac version of Pocketbay work here too).

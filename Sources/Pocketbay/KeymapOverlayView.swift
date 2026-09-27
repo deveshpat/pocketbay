@@ -9,8 +9,6 @@ final class KeymapOverlayView: NSView {
     var keymap = Keymap.bgmi { didSet { needsDisplay = true } }
     var deviceSize = CGSize(width: 1920, height: 1080)
     var isAiming = false { didSet { needsDisplay = true } }
-    /// Current controls mode: during play only matching buttons are shown.
-    var controlMode: ControlMode = .foot { didSet { needsDisplay = true } }
     /// Called whenever the user edits the layout.
     var onChange: ((Keymap) -> Void)?
     var onDone: (() -> Void)?
@@ -68,7 +66,6 @@ final class KeymapOverlayView: NSView {
         let dim = !editing
         for c in keymap.controls {
             if !editing && isAiming && (c.type == .aim || c.type == .look) { continue }
-            if !editing, let m = c.mode, m != controlMode { continue }
             let p = center(c)
             let selected = c.id == selectedID
             switch c.type {
@@ -106,10 +103,6 @@ final class KeymapOverlayView: NSView {
                     NSColor.controlAccentColor.setStroke()
                     ring.lineWidth = 2
                     ring.stroke()
-                }
-                if let m = c.mode {
-                    let off: CGFloat = c.type == .joystick ? joystickRadius(c) * 0.7 : 16
-                    Glyph.drawSymbol(m == .vehicle ? "car.fill" : "figure.walk", at: CGPoint(x: p.x + off, y: p.y - off), pointSize: 11)
                 }
                 let below = c.type == .joystick ? joystickRadius(c) + 14 : (c.type == .aim || c.type == .look ? 32 : 16)
                 caption(c.label ?? c.type.title, below: p, offset: below)
@@ -204,20 +197,6 @@ final class KeymapOverlayView: NSView {
 
     // MARK: Toolbar
 
-    private func vehicleKeyButton() -> NSView {
-        let label = NSTextField(labelWithString: "Vehicle toggle:")
-        label.textColor = .secondaryLabelColor
-        let key = KeyCaptureButton(key: keymap.vehicleToggleKey) { [weak self] k in
-            guard let self else { return }
-            self.keymap.vehicleToggleKey = k
-            self.onChange?(self.keymap)
-        }
-        key.toolTip = "Switches between on-foot and vehicle controls"
-        let s = NSStackView(views: [label, key])
-        s.spacing = 4
-        return s
-    }
-
     private func showToolbar() {
         let bar = NSVisualEffectView()
         bar.material = .hudWindow
@@ -261,7 +240,7 @@ final class KeymapOverlayView: NSView {
 
         let buttons = NSStackView(views: (toolbarAccessory.map { [$0] } ?? []) + [
             add("Button", "hand.tap", .tap), add("Joystick", "dpad", .joystick), add("Aim", "scope", .aim),
-            add("Fire", "flame", .fire), add("Free look", "eye", .look), vehicleKeyButton(), reset, done,
+            add("Fire", "flame", .fire), add("Free look", "eye", .look), reset, done,
         ])
         buttons.spacing = 6
         let stack = NSStackView(views: [buttons, hint])
@@ -341,26 +320,6 @@ final class ControlInspector: NSViewController {
                 self?.control.key = k
                 self?.commit()
             }))
-        }
-        if control.type != .aim {
-            let works = NSPopUpButton(frame: .zero, pullsDown: false)
-            works.addItems(withTitles: ["Always", ControlMode.foot.title, ControlMode.vehicle.title])
-            works.selectItem(at: control.mode == nil ? 0 : control.mode == .foot ? 1 : 2)
-            works.onChange { [weak self] in
-                self?.control.mode = [nil, .foot, .vehicle][works.indexOfSelectedItem]
-                self?.commit()
-            }
-            rows.append(row("Works", works))
-        }
-        if control.type == .tap {
-            let sw = NSPopUpButton(frame: .zero, pullsDown: false)
-            sw.addItems(withTitles: ["Nothing else", "Switch to vehicle controls", "Switch to on-foot controls", "Toggle vehicle / on-foot"])
-            sw.selectItem(at: [nil, ModeSwitch.vehicle, .foot, .toggle].firstIndex(of: control.switchesTo) ?? 0)
-            sw.onChange { [weak self] in
-                self?.control.switchesTo = [nil, .vehicle, .foot, .toggle][sw.indexOfSelectedItem]
-                self?.commit()
-            }
-            rows.append(row("Then", sw))
         }
         if control.type == .tap {
             let box = NSButton(checkboxWithTitle: "Show cursor (for bag, map, menus)", target: nil, action: nil)

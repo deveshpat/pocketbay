@@ -51,10 +51,6 @@ struct Control: Codable, Identifiable, Equatable {
     /// Hold-to-open: pressing the key taps the button (opens), releasing taps it again
     /// (closes). With showsCursor, aim pauses only while the key is held.
     var holdToOpen: Bool?
-    /// When the control works: nil = always, or only on foot / only in a vehicle.
-    var mode: ControlMode?
-    /// Pressing it switches the controls mode (e.g. Drive/Exit vehicle → toggle).
-    var switchesTo: ModeSwitch?
 
     static func == (a: Control, b: Control) -> Bool { a.id == b.id }
 
@@ -80,30 +76,18 @@ struct Control: Codable, Identifiable, Equatable {
     }
 }
 
-enum ControlMode: String, Codable, CaseIterable {
-    case foot, vehicle
-    var title: String { self == .foot ? "On foot" : "In vehicle" }
-}
-
-enum ModeSwitch: String, Codable {
-    case foot, vehicle, toggle
-}
-
 struct Keymap: Codable {
     var id = UUID()
     var name: String
     /// Android packages this layout applies to; empty = every app.
     var packages: [String]
     var controls: [Control]
-    /// Toggles between on-foot and vehicle controls.
-    var vehicleToggleKey: InputKey?
 
-    init(id: UUID = UUID(), name: String, packages: [String], controls: [Control], vehicleToggleKey: InputKey? = .key(9)) {
+    init(id: UUID = UUID(), name: String, packages: [String], controls: [Control]) {
         self.id = id
         self.name = name
         self.packages = packages
         self.controls = controls
-        self.vehicleToggleKey = vehicleToggleKey
     }
 
     init(from decoder: Decoder) throws {
@@ -112,7 +96,6 @@ struct Keymap: Codable {
         name = try c.decode(String.self, forKey: .name)
         packages = try c.decode([String].self, forKey: .packages)
         controls = try c.decode([Control].self, forKey: .controls)
-        vehicleToggleKey = try c.decodeIfPresent(InputKey.self, forKey: .vehicleToggleKey)
     }
 
     /// Default layout for BGMI's "Layout 2" HUD at 16:9, measured from the game's

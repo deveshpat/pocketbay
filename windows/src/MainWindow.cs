@@ -106,11 +106,6 @@ public sealed class MainWindow : Window
             var packs = files.Where(GamePack.LooksLikePack).ToArray();
             if (packs.Length > 0) InstallPack(packs[0]); else Install(files);
         };
-        _engine.ModeChanged += mode =>
-        {
-            _overlay.ControlMode = mode;
-            Toast(mode == ControlMode.Vehicle ? "Vehicle controls" : "On-foot controls");
-        };
         _engine.AimingChanged += on =>
         {
             _screen.SetCursorCaptured(on);
