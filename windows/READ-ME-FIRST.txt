@@ -1,0 +1,43 @@
+POCKETBAY FOR WINDOWS  —  Android games on your PC
+==================================================
+
+REQUIREMENTS
+- Windows 10 or 11, 64-bit, Intel or AMD processor
+- 8 GB RAM minimum (16 GB recommended)
+- About 30 GB free disk space
+- Hardware virtualization turned on (see "If Android won't start" below)
+
+FIRST START
+1. Double-click Pocketbay.exe.
+   Windows may say "Windows protected your PC" because the app isn't signed by a
+   company. Click "More info", then "Run anyway".
+2. Read Google's Android SDK license and click "I accept — download and install".
+   It downloads the Android emulator and Android 15 with the Play Store (~2 GB)
+   straight from Google. If the download stops, just open Pocketbay again: it resumes.
+3. Android starts. Open the Play Store, sign in, and install your games.
+
+GAME CONTROLS (BGMI layout is built in)
+- WASD move, Shift sprint, ` (key left of 1) mouse aim on/off, left click fire,
+  right click scope, Space jump, C crouch, Z prone, R reload, 1/2 guns, G throw,
+  H heal, F open door, E get in vehicle, Alt free look.
+- Hold Tab (bag) or M (map): it opens with the cursor; let go and it closes.
+- Esc = Android Back, or leave mouse aim.
+- Ctrl+E edits the controls: drag buttons, click one to change its key.
+- Ctrl+K turns game controls on/off. F11 = full screen.
+- Layouts: sidebar "…" button > Layout (new, rename, import/export .json files —
+  layouts from the Mac version of Pocketbay work here too).
+
+IF ANDROID WON'T START
+- "hardware virtualization is turned off": Start > type "Turn Windows features on or
+  off" > tick "Windows Hypervisor Platform" > OK > restart the PC. If it still fails,
+  enable Intel VT-x / AMD SVM ("Virtualization") in the BIOS/UEFI settings.
+- Black screen or crash in a game: sidebar "…" > Graphics > "Compatibility (ANGLE /
+  Vulkan)". Android restarts with the other graphics mode.
+- Logs: sidebar "…" > Open logs folder. Send pocketbay.log and emulator.log if you
+  need help.
+
+NOTES
+- Games run through ARM translation on Intel/AMD PCs; some heavy games may be slow
+  or refuse to start.
+- BGMI does not officially support emulators; accounts used on emulators can be
+  banned. Use an account you can afford to lose.

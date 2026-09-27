@@ -1,0 +1,11 @@
+# Build output
+.build/
+build/
+windows/bin/
+windows/obj/
+windows/publish/
+windows/*.zip
+*.pbpack
+# Personal BGMI screenshots (account names)
+bgmi-layouts/
+.DS_Store
